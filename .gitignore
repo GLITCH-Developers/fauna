@@ -1,6 +1,10 @@
 # Rust
 /target/
+debug/
+target/
 **/*.rs.bk
+*.pdb
+**/mutants.out*/
 
 # Fauna local runtime data
 /.fauna/
@@ -31,14 +35,16 @@ desktop.ini
 !.vscode/extensions.json
 !.vscode/settings.json
 
-# JavaScript frontend artifacts for future Tauri UI
-node_modules/
+# Generated packages
 dist/
+
+# JavaScript frontend artifacts for future UI experiments
+node_modules/
 build/
 .svelte-kit/
 .next/
 .vite/
 
-# Tauri packaging outputs
+# Tauri packaging outputs if a Tauri shell is added later
 src-tauri/target/
 src-tauri/gen/

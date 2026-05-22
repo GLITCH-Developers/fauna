@@ -1,5 +1,7 @@
 # Fauna
 
+Local and end-to-end encrypted messaging.
+
 Fauna is an early Rust foundation for a peer-to-peer, end-to-end encrypted messaging app. The long-term goal is a lightweight desktop app where the person who starts a chat can use their own computer like a small server, without storing message contents on a central service.
 
 ## Current Scope
@@ -117,16 +119,6 @@ Notes:
 - Over the internet, the host needs firewall permission and router port forwarding.
 - For internet use without port forwarding, prefer the desktop app's Tor mode.
 - Message contents are encrypted before they are written to the socket.
-
-## First GitHub Push
-
-```powershell
-git add .
-git commit -m "Initial Fauna Rust workspace"
-git branch -M main
-git remote add origin https://github.com/<user>/<repo>.git
-git push -u origin main
-```
 
 ## Architecture Direction
 
