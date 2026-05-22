@@ -105,7 +105,11 @@ impl FaunaApp {
 
     fn start_host(&mut self) {
         let name = self.display_name.trim().to_owned();
-        let bind = self.bind_addr.trim().to_owned();
+        let bind = if self.tor_enabled {
+            self.bind_addr.trim().to_owned()
+        } else {
+            normalize_direct_bind_addr(self.bind_addr.trim())
+        };
         let public_addr = self.public_addr.trim().to_owned();
         let tor_config = match self.prepare_tor_config() {
             Ok(config) => config,
@@ -368,6 +372,15 @@ impl eframe::App for FaunaApp {
                         if secondary_button(ui, "Davet Linkini Kopyala").clicked() {
                             ui.ctx().copy_text(self.current_invite.clone());
                         }
+                    } else if ui
+                        .add_sized(
+                            [ui.available_width(), 38.0],
+                            egui::Button::new("Bu Bilgisayarda Test Ayarla"),
+                        )
+                        .clicked()
+                    {
+                        self.bind_addr = "127.0.0.1:45123".to_owned();
+                        self.public_addr = "127.0.0.1:45123".to_owned();
                     }
 
                     ui.add_space(18.0);
@@ -632,7 +645,7 @@ fn host_network(
         )?;
         format!("onion://{}:{}", onion.service_id, config.service_port)
     } else {
-        public_addr
+        normalize_direct_public_addr(&public_addr, local_addr.to_string())
     };
 
     let invite = Invite::new(&identity, &name).with_address(advertised_addr);
@@ -824,6 +837,22 @@ fn normalize_address(address: &str) -> Result<String> {
     }
 
     bail!("desteklenmeyen adres formati: {address}")
+}
+
+fn normalize_direct_bind_addr(address: &str) -> String {
+    match address {
+        "" => "127.0.0.1:45123".to_owned(),
+        address if address.contains(':') => address.to_owned(),
+        port => format!("127.0.0.1:{port}"),
+    }
+}
+
+fn normalize_direct_public_addr(address: &str, local_addr: String) -> String {
+    match address.trim() {
+        "" => local_addr,
+        address if address.ends_with(":0") => local_addr,
+        address => address.to_owned(),
+    }
 }
 
 fn connect_to_invite_address(address: &str, tor_socks_addr: &str) -> Result<TcpStream> {
