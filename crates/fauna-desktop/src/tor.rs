@@ -62,6 +62,8 @@ pub fn start_managed_tor(exe_hint: Option<&str>) -> Result<TorRuntime> {
         .with_context(|| format!("Tor SOCKS port hazir olmadi: {socks_addr}"))?;
     wait_for_port(&control_addr, Duration::from_secs(10))
         .with_context(|| format!("Tor control port hazir olmadi: {control_addr}"))?;
+    wait_for_bootstrap(&control_addr, Duration::from_secs(90))
+        .with_context(|| "Tor ag baglantisi hazir olmadi")?;
 
     Ok(TorRuntime {
         child,
@@ -120,7 +122,10 @@ pub fn connect_via_socks5(socks_addr: &str, host: &str, port: u16) -> Result<Tcp
     let mut header = [0_u8; 4];
     stream.read_exact(&mut header)?;
     if header[0] != 0x05 || header[1] != 0x00 {
-        bail!("Tor SOCKS baglantisi reddedildi");
+        bail!(
+            "Tor SOCKS baglantisi reddedildi: {}",
+            socks_reply_message(header[1])
+        );
     }
 
     match header[3] {
@@ -142,6 +147,32 @@ pub fn connect_via_socks5(socks_addr: &str, host: &str, port: u16) -> Result<Tcp
     }
 
     Ok(stream)
+}
+
+pub fn connect_via_socks5_with_retry(
+    socks_addr: &str,
+    host: &str,
+    port: u16,
+    timeout: Duration,
+) -> Result<TcpStream> {
+    let started = Instant::now();
+    let mut last_error = None;
+
+    while started.elapsed() < timeout {
+        match connect_via_socks5(socks_addr, host, port) {
+            Ok(stream) => return Ok(stream),
+            Err(error) => {
+                last_error = Some(error);
+                thread::sleep(Duration::from_secs(2));
+            }
+        }
+    }
+
+    match last_error {
+        Some(error) => Err(error)
+            .with_context(|| format!("{host}:{port} onion adresine Tor uzerinden baglanilamadi")),
+        None => bail!("{host}:{port} onion adresine Tor uzerinden baglanilamadi"),
+    }
 }
 
 struct TorControl {
@@ -234,6 +265,40 @@ impl TorControl {
                 bail!("Tor control komutu basarisiz: {}", lines.join(" | "));
             }
         }
+    }
+}
+
+fn wait_for_bootstrap(control_addr: &str, timeout: Duration) -> Result<()> {
+    let started = Instant::now();
+
+    while started.elapsed() < timeout {
+        let mut control = TorControl::connect(control_addr)?;
+        control.authenticate()?;
+        let lines = control.command("GETINFO status/bootstrap-phase")?;
+        if lines
+            .iter()
+            .any(|line| line.contains("PROGRESS=100") || line.contains("SUMMARY=\"Done\""))
+        {
+            return Ok(());
+        }
+
+        thread::sleep(Duration::from_secs(1));
+    }
+
+    bail!("Tor bootstrap zaman asimina ugradi")
+}
+
+fn socks_reply_message(code: u8) -> &'static str {
+    match code {
+        0x01 => "genel SOCKS sunucu hatasi",
+        0x02 => "kurallar baglantiya izin vermedi",
+        0x03 => "ag erisilemiyor",
+        0x04 => "hedef erisilemiyor; onion servisi henuz yayilmamis olabilir",
+        0x05 => "baglanti reddedildi; host tarafinda sohbet henuz dinlemiyor olabilir",
+        0x06 => "TTL suresi doldu",
+        0x07 => "komut desteklenmiyor",
+        0x08 => "adres tipi desteklenmiyor",
+        _ => "bilinmeyen SOCKS hatasi",
     }
 }
 

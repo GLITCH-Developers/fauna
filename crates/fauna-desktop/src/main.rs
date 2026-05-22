@@ -662,7 +662,12 @@ fn normalize_address(address: &str) -> Result<String> {
 
 fn connect_to_invite_address(address: &str, tor_socks_addr: &str) -> Result<TcpStream> {
     if let Some(onion_target) = parse_onion_address(address)? {
-        return tor::connect_via_socks5(tor_socks_addr, &onion_target.host, onion_target.port);
+        return tor::connect_via_socks5_with_retry(
+            tor_socks_addr,
+            &onion_target.host,
+            onion_target.port,
+            Duration::from_secs(75),
+        );
     }
 
     let address = normalize_address(address)?;
