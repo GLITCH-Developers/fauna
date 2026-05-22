@@ -49,6 +49,7 @@ struct FaunaApp {
     tor_runtime: Option<tor::TorRuntime>,
     messages: Vec<MessageLine>,
     status: String,
+    peer_name: Option<String>,
 }
 
 struct ConnectionHandle {
@@ -100,6 +101,7 @@ impl FaunaApp {
                     .to_owned(),
             }],
             status: "Hazir".to_owned(),
+            peer_name: None,
         }
     }
 
@@ -233,6 +235,7 @@ impl FaunaApp {
                 }
                 NetworkEvent::Connected(peer_name) => {
                     self.status = format!("{peer_name} ile sifreli oturum kuruldu");
+                    self.peer_name = Some(peer_name);
                     self.push_system(&self.status.clone());
                 }
                 NetworkEvent::Incoming(body) => {
@@ -243,6 +246,7 @@ impl FaunaApp {
                 }
                 NetworkEvent::Disconnected(reason) => {
                     self.status = "Baglanti kapandi".to_owned();
+                    self.peer_name = None;
                     self.push_system(&reason);
                 }
                 NetworkEvent::Error(error) => {
@@ -408,46 +412,108 @@ impl eframe::App for FaunaApp {
             )
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
-                    ui.label(
-                        egui::RichText::new("Sohbet")
-                            .size(22.0)
-                            .strong()
-                            .color(egui::Color32::from_rgb(226, 235, 232)),
-                    );
-                    ui.add_space(10.0);
+                    chat_header(ui, self.peer_name.as_deref(), &self.status);
+                    ui.add_space(12.0);
 
-                    egui::ScrollArea::vertical()
-                        .stick_to_bottom(true)
-                        .auto_shrink([false, false])
+                    let message_area_height = (ui.available_height() - 68.0).max(240.0);
+                    egui::Frame::none()
+                        .fill(egui::Color32::from_rgb(13, 18, 25))
+                        .rounding(egui::Rounding::same(12.0))
+                        .inner_margin(egui::Margin::symmetric(14.0, 14.0))
                         .show(ui, |ui| {
-                            for message in &self.messages {
-                                message_row(ui, message);
-                                ui.add_space(8.0);
-                            }
+                            ui.set_min_height(message_area_height);
+                            egui::ScrollArea::vertical()
+                                .stick_to_bottom(true)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    if self.messages.is_empty() {
+                                        empty_chat(ui);
+                                    }
+
+                                    for message in &self.messages {
+                                        message_row(ui, message);
+                                        ui.add_space(8.0);
+                                    }
+                                });
                         });
 
-                    ui.separator();
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        let response = ui.add_sized(
-                            [ui.available_width() - 112.0, 42.0],
-                            egui::TextEdit::singleline(&mut self.draft_message)
-                                .hint_text("Mesaj yaz"),
-                        );
-                        let enter_pressed = response.lost_focus()
-                            && ui.input(|input| input.key_pressed(egui::Key::Enter));
-
-                        if ui
-                            .add_sized([100.0, 42.0], egui::Button::new("Gonder"))
-                            .clicked()
-                            || enter_pressed
-                        {
-                            self.send_message();
-                        }
-                    });
+                    ui.add_space(12.0);
+                    if composer(ui, &mut self.draft_message, self.connection.is_some()) {
+                        self.send_message();
+                    }
                 });
             });
     }
+}
+
+fn chat_header(ui: &mut egui::Ui, peer_name: Option<&str>, status: &str) {
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            ui.label(
+                egui::RichText::new(peer_name.unwrap_or("Sohbet"))
+                    .size(24.0)
+                    .strong()
+                    .color(egui::Color32::from_rgb(226, 235, 232)),
+            );
+            ui.label(
+                egui::RichText::new(status)
+                    .size(14.0)
+                    .color(egui::Color32::from_rgb(145, 160, 170)),
+            );
+        });
+    });
+}
+
+fn empty_chat(ui: &mut egui::Ui) {
+    ui.vertical_centered(|ui| {
+        ui.add_space(80.0);
+        ui.label(
+            egui::RichText::new("Mesajlar burada gorunecek")
+                .size(18.0)
+                .strong()
+                .color(egui::Color32::from_rgb(170, 184, 192)),
+        );
+        ui.label(
+            egui::RichText::new("Baglanti kurulduktan sonra alttaki kutudan yazabilirsin.")
+                .size(14.0)
+                .color(egui::Color32::from_rgb(125, 140, 150)),
+        );
+    });
+}
+
+fn composer(ui: &mut egui::Ui, draft_message: &mut String, can_send: bool) -> bool {
+    let mut should_send = false;
+
+    egui::Frame::none()
+        .fill(egui::Color32::from_rgb(18, 24, 33))
+        .rounding(egui::Rounding::same(10.0))
+        .inner_margin(egui::Margin::symmetric(10.0, 10.0))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let response = ui.add_enabled(
+                    can_send,
+                    egui::TextEdit::singleline(draft_message)
+                        .hint_text("Mesaj yaz")
+                        .desired_width(ui.available_width() - 118.0),
+                );
+                let enter_pressed =
+                    response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+
+                let send_clicked = ui
+                    .add_enabled(
+                        can_send,
+                        egui::Button::new(egui::RichText::new("Gonder").size(16.0).strong())
+                            .fill(egui::Color32::from_rgb(35, 122, 106)),
+                    )
+                    .clicked();
+
+                if send_clicked || enter_pressed {
+                    should_send = true;
+                }
+            });
+        });
+
+    should_send
 }
 
 fn configure_ui(ctx: &egui::Context) {
