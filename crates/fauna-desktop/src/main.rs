@@ -795,7 +795,7 @@ fn run_session(
     let hello = create_hello(&identity, display_name, &exchange);
     write_json_line(&mut writer, &hello)?;
 
-    let remote_hello: HelloFrame = read_json_line(&mut reader)?;
+    let remote_hello = read_hello_frame(&mut reader)?;
     verify_hello(
         &remote_hello,
         expected_remote_identity_public_key.as_deref(),
@@ -830,9 +830,13 @@ fn run_session(
 
 #[derive(Debug, Serialize, Deserialize)]
 struct HelloFrame {
+    #[serde(alias = "peerId")]
     peer_id: PeerId,
+    #[serde(alias = "displayName")]
     display_name: String,
+    #[serde(alias = "identityPublicKey")]
     identity_public_key: String,
+    #[serde(alias = "exchangePublicKey")]
     exchange_public_key: String,
     signature: String,
 }
@@ -917,7 +921,44 @@ fn read_json_line<T: DeserializeOwned>(reader: &mut BufReader<TcpStream>) -> Res
         bail!("karsi taraf baglantiyi kapatti");
     }
 
-    Ok(serde_json::from_str(line.trim_end())?)
+    let line = line.trim_end();
+    serde_json::from_str(line).with_context(|| format!("gelen paket okunamadi: {}", preview(line)))
+}
+
+fn read_hello_frame(reader: &mut BufReader<TcpStream>) -> Result<HelloFrame> {
+    let mut line = String::new();
+    let bytes = reader.read_line(&mut line)?;
+    if bytes == 0 {
+        bail!("karsi taraf baglantiyi kapatti");
+    }
+
+    let line = line.trim_end();
+    let value: serde_json::Value = serde_json::from_str(line)
+        .with_context(|| format!("handshake JSON degil: {}", preview(line)))?;
+
+    if value.get("nonce").is_some() && value.get("ciphertext").is_some() {
+        bail!(
+            "handshake yerine sifreli mesaj paketi geldi. Iki tarafta da en guncel Fauna surumunu acip yeni davet olustur."
+        );
+    }
+
+    if value.get("peer_id").is_none() && value.get("peerId").is_none() {
+        bail!(
+            "handshake paketinde peer_id yok. Eski davet veya eski Fauna surumu kullaniliyor olabilir: {}",
+            preview(line)
+        );
+    }
+
+    serde_json::from_value(value).context("handshake paketi okunamadi")
+}
+
+fn preview(input: &str) -> String {
+    const MAX: usize = 180;
+    if input.len() <= MAX {
+        input.to_owned()
+    } else {
+        format!("{}...", &input[..MAX])
+    }
 }
 
 fn normalize_address(address: &str) -> Result<String> {
