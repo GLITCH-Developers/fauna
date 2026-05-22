@@ -77,7 +77,7 @@ enum NetworkEvent {
 
 impl FaunaApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        configure_ui(&cc.egui_ctx);
 
         Self {
             display_name: "Kivan".to_owned(),
@@ -263,131 +263,297 @@ impl eframe::App for FaunaApp {
         ctx.request_repaint_after(Duration::from_millis(100));
 
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Fauna");
-                ui.separator();
-                ui.label(&self.status);
-            });
+            egui::Frame::none()
+                .fill(egui::Color32::from_rgb(15, 20, 28))
+                .inner_margin(egui::Margin::symmetric(20.0, 14.0))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Fauna")
+                                .size(28.0)
+                                .strong()
+                                .color(egui::Color32::from_rgb(235, 244, 241)),
+                        );
+                        ui.add_space(14.0);
+                        ui.separator();
+                        ui.add_space(14.0);
+                        status_pill(ui, &self.status);
+                    });
+                });
         });
 
         egui::SidePanel::left("setup_panel")
             .resizable(false)
-            .exact_width(320.0)
+            .exact_width(380.0)
+            .frame(
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(18, 24, 33))
+                    .inner_margin(egui::Margin::symmetric(18.0, 18.0)),
+            )
             .show(ctx, |ui| {
-                ui.add_space(8.0);
-                ui.heading("Baglanti");
-                ui.add_space(8.0);
+                ui.vertical(|ui| {
+                    section_title(ui, "Baglanti");
 
-                ui.label("Gorunen ad");
-                ui.text_edit_singleline(&mut self.display_name);
+                    field_label(ui, "Gorunen ad");
+                    ui.add_sized(
+                        [ui.available_width(), 34.0],
+                        egui::TextEdit::singleline(&mut self.display_name),
+                    );
 
-                ui.add_space(12.0);
-                ui.checkbox(&mut self.tor_enabled, "Tor modu");
+                    ui.add_space(14.0);
+                    ui.checkbox(&mut self.tor_enabled, "Tor modu");
 
-                if self.tor_enabled {
-                    ui.checkbox(&mut self.tor_auto_start, "Tor'u Fauna baslatsin");
-                    if self.tor_auto_start {
-                        ui.label("Paketli tor.exe yolu (bos birakilabilir)");
-                        ui.text_edit_singleline(&mut self.tor_exe_path);
+                    if self.tor_enabled {
+                        ui.checkbox(&mut self.tor_auto_start, "Tor'u Fauna baslatsin");
+
+                        egui::CollapsingHeader::new("Gelistirilmis Tor ayarlari")
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                field_label(ui, "Paketli tor.exe yolu");
+                                ui.add_sized(
+                                    [ui.available_width(), 32.0],
+                                    egui::TextEdit::singleline(&mut self.tor_exe_path)
+                                        .hint_text("Bos birakilabilir"),
+                                );
+                                field_label(ui, "Tor control");
+                                ui.add_sized(
+                                    [ui.available_width(), 32.0],
+                                    egui::TextEdit::singleline(&mut self.tor_control_addr),
+                                );
+                                field_label(ui, "Tor SOCKS");
+                                ui.add_sized(
+                                    [ui.available_width(), 32.0],
+                                    egui::TextEdit::singleline(&mut self.tor_socks_addr),
+                                );
+                                field_label(ui, "Onion port");
+                                ui.add_sized(
+                                    [ui.available_width(), 32.0],
+                                    egui::TextEdit::singleline(&mut self.tor_service_port),
+                                );
+                            });
                     }
-                    ui.label("Tor control");
-                    ui.text_edit_singleline(&mut self.tor_control_addr);
-                    ui.label("Tor SOCKS");
-                    ui.text_edit_singleline(&mut self.tor_socks_addr);
-                    ui.label("Onion port");
-                    ui.text_edit_singleline(&mut self.tor_service_port);
-                }
 
-                ui.add_space(12.0);
-                ui.label("Host adresi");
-                ui.text_edit_singleline(&mut self.bind_addr);
+                    ui.add_space(14.0);
+                    egui::CollapsingHeader::new("Yerel ag ayarlari")
+                        .default_open(!self.tor_enabled)
+                        .show(ui, |ui| {
+                            field_label(ui, "Host adresi");
+                            ui.add_sized(
+                                [ui.available_width(), 32.0],
+                                egui::TextEdit::singleline(&mut self.bind_addr),
+                            );
 
-                if !self.tor_enabled {
-                    ui.label("Paylasilan adres");
-                    ui.text_edit_singleline(&mut self.public_addr);
-                }
-
-                if ui.button("Sohbet Baslat").clicked() {
-                    self.start_host();
-                }
-
-                if !self.current_invite.is_empty() {
-                    ui.add_space(10.0);
-                    ui.label("Davet linki");
-                    ui.text_edit_multiline(&mut self.current_invite);
-                    if ui.button("Davet Linkini Kopyala").clicked() {
-                        ui.ctx().copy_text(self.current_invite.clone());
-                    }
-                }
-
-                ui.separator();
-                ui.heading("Davete Katil");
-                ui.text_edit_multiline(&mut self.join_invite);
-                if ui.button("Baglan").clicked() {
-                    self.start_join();
-                }
-
-                ui.separator();
-                ui.label("Sunucu yok. Tor modunda davet linki .onion adresi tasir.");
-            });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical()
-                .stick_to_bottom(true)
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    for message in &self.messages {
-                        match message.author {
-                            MessageAuthor::Local => {
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::TOP),
-                                    |ui| {
-                                        ui.label(
-                                            egui::RichText::new(&message.body)
-                                                .background_color(egui::Color32::from_rgb(
-                                                    36, 92, 82,
-                                                ))
-                                                .color(egui::Color32::WHITE),
-                                        );
-                                    },
+                            if !self.tor_enabled {
+                                field_label(ui, "Paylasilan adres");
+                                ui.add_sized(
+                                    [ui.available_width(), 32.0],
+                                    egui::TextEdit::singleline(&mut self.public_addr),
                                 );
                             }
-                            MessageAuthor::Remote => {
-                                ui.label(
-                                    egui::RichText::new(&message.body)
-                                        .background_color(egui::Color32::from_rgb(55, 59, 68))
-                                        .color(egui::Color32::WHITE),
-                                );
-                            }
-                            MessageAuthor::System => {
-                                ui.centered_and_justified(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(&message.body)
-                                            .small()
-                                            .color(egui::Color32::GRAY),
-                                    );
-                                });
-                            }
+                        });
+
+                    ui.add_space(16.0);
+                    if primary_button(ui, "Sohbet Baslat").clicked() {
+                        self.start_host();
+                    }
+
+                    if !self.current_invite.is_empty() {
+                        ui.add_space(16.0);
+                        section_title(ui, "Davet linki");
+                        ui.add_sized(
+                            [ui.available_width(), 92.0],
+                            egui::TextEdit::multiline(&mut self.current_invite),
+                        );
+                        ui.add_space(8.0);
+                        if secondary_button(ui, "Davet Linkini Kopyala").clicked() {
+                            ui.ctx().copy_text(self.current_invite.clone());
                         }
-                        ui.add_space(6.0);
+                    }
+
+                    ui.add_space(18.0);
+                    ui.separator();
+                    ui.add_space(16.0);
+
+                    section_title(ui, "Davete Katil");
+                    ui.add_sized(
+                        [ui.available_width(), 112.0],
+                        egui::TextEdit::multiline(&mut self.join_invite)
+                            .hint_text("fauna://join/..."),
+                    );
+                    ui.add_space(8.0);
+                    if primary_button(ui, "Baglan").clicked() {
+                        self.start_join();
                     }
                 });
-
-            ui.separator();
-            ui.horizontal(|ui| {
-                let response = ui.add_sized(
-                    [ui.available_width() - 92.0, 36.0],
-                    egui::TextEdit::singleline(&mut self.draft_message).hint_text("Mesaj yaz"),
-                );
-                let enter_pressed =
-                    response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-
-                if ui.button("Gonder").clicked() || enter_pressed {
-                    self.send_message();
-                }
             });
-        });
+
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(11, 15, 21))
+                    .inner_margin(egui::Margin::symmetric(22.0, 18.0)),
+            )
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new("Sohbet")
+                            .size(22.0)
+                            .strong()
+                            .color(egui::Color32::from_rgb(226, 235, 232)),
+                    );
+                    ui.add_space(10.0);
+
+                    egui::ScrollArea::vertical()
+                        .stick_to_bottom(true)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            for message in &self.messages {
+                                message_row(ui, message);
+                                ui.add_space(8.0);
+                            }
+                        });
+
+                    ui.separator();
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        let response = ui.add_sized(
+                            [ui.available_width() - 112.0, 42.0],
+                            egui::TextEdit::singleline(&mut self.draft_message)
+                                .hint_text("Mesaj yaz"),
+                        );
+                        let enter_pressed = response.lost_focus()
+                            && ui.input(|input| input.key_pressed(egui::Key::Enter));
+
+                        if ui
+                            .add_sized([100.0, 42.0], egui::Button::new("Gonder"))
+                            .clicked()
+                            || enter_pressed
+                        {
+                            self.send_message();
+                        }
+                    });
+                });
+            });
     }
+}
+
+fn configure_ui(ctx: &egui::Context) {
+    let mut style = (*ctx.style()).clone();
+    style.spacing.item_spacing = egui::vec2(10.0, 10.0);
+    style.spacing.button_padding = egui::vec2(14.0, 10.0);
+    style.visuals = egui::Visuals::dark();
+    style.visuals.window_fill = egui::Color32::from_rgb(11, 15, 21);
+    style.visuals.panel_fill = egui::Color32::from_rgb(11, 15, 21);
+    style.visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(31, 39, 50);
+    style.visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(43, 55, 68);
+    style.visuals.widgets.active.bg_fill = egui::Color32::from_rgb(32, 116, 102);
+    ctx.set_style(style);
+
+    let mut fonts = egui::FontDefinitions::default();
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default();
+    ctx.set_fonts(fonts);
+}
+
+fn section_title(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .size(20.0)
+            .strong()
+            .color(egui::Color32::from_rgb(232, 241, 238)),
+    );
+}
+
+fn field_label(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .size(14.0)
+            .color(egui::Color32::from_rgb(164, 177, 188)),
+    );
+}
+
+fn status_pill(ui: &mut egui::Ui, status: &str) {
+    let color = if status.contains("Hata") || status.contains("kapandi") {
+        egui::Color32::from_rgb(185, 68, 68)
+    } else if status.contains("hazir") || status.contains("kuruldu") {
+        egui::Color32::from_rgb(45, 132, 112)
+    } else {
+        egui::Color32::from_rgb(70, 92, 120)
+    };
+
+    egui::Frame::none()
+        .fill(color)
+        .rounding(egui::Rounding::same(8.0))
+        .inner_margin(egui::Margin::symmetric(12.0, 6.0))
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new(status)
+                    .size(15.0)
+                    .strong()
+                    .color(egui::Color32::WHITE),
+            );
+        });
+}
+
+fn primary_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    ui.add_sized(
+        [ui.available_width(), 44.0],
+        egui::Button::new(egui::RichText::new(text).size(17.0).strong())
+            .fill(egui::Color32::from_rgb(35, 122, 106)),
+    )
+}
+
+fn secondary_button(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    ui.add_sized(
+        [ui.available_width(), 38.0],
+        egui::Button::new(egui::RichText::new(text).size(15.0))
+            .fill(egui::Color32::from_rgb(39, 49, 63)),
+    )
+}
+
+fn message_row(ui: &mut egui::Ui, message: &MessageLine) {
+    match message.author {
+        MessageAuthor::Local => {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                message_bubble(
+                    ui,
+                    &message.body,
+                    egui::Color32::from_rgb(34, 116, 102),
+                    egui::Color32::WHITE,
+                );
+            });
+        }
+        MessageAuthor::Remote => {
+            message_bubble(
+                ui,
+                &message.body,
+                egui::Color32::from_rgb(35, 43, 55),
+                egui::Color32::from_rgb(235, 241, 238),
+            );
+        }
+        MessageAuthor::System => {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    egui::RichText::new(&message.body)
+                        .size(14.0)
+                        .color(egui::Color32::from_rgb(137, 150, 160)),
+                );
+            });
+        }
+    }
+}
+
+fn message_bubble(ui: &mut egui::Ui, body: &str, fill: egui::Color32, text: egui::Color32) {
+    egui::Frame::none()
+        .fill(fill)
+        .rounding(egui::Rounding::same(10.0))
+        .inner_margin(egui::Margin::symmetric(14.0, 10.0))
+        .show(ui, |ui| {
+            ui.set_max_width(520.0);
+            ui.label(egui::RichText::new(body).size(16.0).color(text));
+        });
 }
 
 fn start_host_thread(
