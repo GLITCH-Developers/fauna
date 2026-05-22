@@ -82,7 +82,7 @@ pub fn publish_onion_service(
     control.authenticate()?;
 
     let lines = control.command(&format!(
-        "ADD_ONION NEW:ED25519-V3 Port={virtual_port},{local_addr}"
+        "ADD_ONION NEW:ED25519-V3 Flags=Detach Port={virtual_port},{local_addr}"
     ))?;
 
     let service_id = lines
