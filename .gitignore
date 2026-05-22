@@ -1,0 +1,44 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Fauna local runtime data
+/.fauna/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# JavaScript frontend artifacts for future Tauri UI
+node_modules/
+dist/
+build/
+.svelte-kit/
+.next/
+.vite/
+
+# Tauri packaging outputs
+src-tauri/target/
+src-tauri/gen/

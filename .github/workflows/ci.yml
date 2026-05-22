@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  core:
+    name: Core and CLI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        run: cargo clippy -p fauna-core -p fauna-cli --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test -p fauna-core -p fauna-cli
+
+  desktop:
+    name: Desktop
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Lint desktop
+        run: cargo clippy -p fauna-desktop --all-targets -- -D warnings
+
+      - name: Test desktop
+        run: cargo test -p fauna-desktop
