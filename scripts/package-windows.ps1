@@ -9,31 +9,28 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $outPath = Join-Path $repoRoot $OutDir
 $tempPath = Join-Path $repoRoot "target/fauna-package"
+$stagePath = Join-Path $tempPath "fauna-windows-x64"
 $exePath = Join-Path $repoRoot "target/$Configuration/fauna-desktop.exe"
 
 if (!(Test-Path $exePath)) {
     throw "Fauna executable not found at $exePath. Run: cargo build -p fauna-desktop --release"
 }
 
-if (Test-Path $outPath) {
-    Remove-Item -LiteralPath $outPath -Recurse -Force
-}
 if (Test-Path $tempPath) {
     Remove-Item -LiteralPath $tempPath -Recurse -Force
 }
 
-New-Item -ItemType Directory -Force -Path $outPath | Out-Null
-New-Item -ItemType Directory -Force -Path $tempPath | Out-Null
+New-Item -ItemType Directory -Force -Path $stagePath | Out-Null
 
-Copy-Item -LiteralPath $exePath -Destination (Join-Path $outPath "Fauna.exe")
-Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination $outPath
-Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $outPath
+Copy-Item -LiteralPath $exePath -Destination (Join-Path $stagePath "Fauna.exe")
+Copy-Item -LiteralPath (Join-Path $repoRoot "README.md") -Destination $stagePath
+Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $stagePath
 
 $bundlePath = Join-Path $tempPath "tor-expert-bundle.tar.gz"
 Write-Host "Downloading Tor Expert Bundle..."
 Invoke-WebRequest -Uri $TorExpertBundleUrl -OutFile $bundlePath
 
-$extractPath = Join-Path $tempPath "tor"
+$extractPath = Join-Path $tempPath "tor-src"
 New-Item -ItemType Directory -Force -Path $extractPath | Out-Null
 tar -xzf $bundlePath -C $extractPath
 
@@ -42,7 +39,7 @@ if ($null -eq $torExe) {
     throw "tor.exe was not found in the Tor Expert Bundle."
 }
 
-$torOut = Join-Path $outPath "bin/tor"
+$torOut = Join-Path $stagePath "bin/tor"
 New-Item -ItemType Directory -Force -Path $torOut | Out-Null
 $torSourceGlob = Join-Path $torExe.Directory.FullName "*"
 Copy-Item -Path $torSourceGlob -Destination $torOut -Recurse -Force
@@ -55,16 +52,28 @@ Bundled URL: $TorExpertBundleUrl
 Tor is distributed by The Tor Project, Inc. Fauna starts a local Tor process
 only for Fauna connectivity and keeps message payload encryption in fauna-core.
 "@
-$notice | Set-Content -LiteralPath (Join-Path $outPath "THIRD_PARTY_NOTICES.txt") -Encoding UTF8
+$notice | Set-Content -LiteralPath (Join-Path $stagePath "THIRD_PARTY_NOTICES.txt") -Encoding UTF8
 
 $zipPath = Join-Path $repoRoot "dist/fauna-windows-x64.zip"
 if (Test-Path $zipPath) {
     Remove-Item -LiteralPath $zipPath -Force
 }
 
-Compress-Archive -Path (Join-Path $outPath "*") -DestinationPath $zipPath -Force
+New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot "dist") | Out-Null
+Compress-Archive -Path (Join-Path $stagePath "*") -DestinationPath $zipPath -Force
 if (!(Test-Path $zipPath)) {
     throw "Package zip was not created at $zipPath"
+}
+
+if (Test-Path $outPath) {
+    try {
+        Remove-Item -LiteralPath $outPath -Recurse -Force
+        Copy-Item -LiteralPath $stagePath -Destination $outPath -Recurse -Force
+    } catch {
+        Write-Warning "Could not refresh $outPath because a file may be in use. The zip package was still created successfully."
+    }
+} else {
+    Copy-Item -LiteralPath $stagePath -Destination $outPath -Recurse -Force
 }
 
 Write-Host "Package created: $zipPath"
