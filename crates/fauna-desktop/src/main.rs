@@ -415,27 +415,34 @@ impl eframe::App for FaunaApp {
                     chat_header(ui, self.peer_name.as_deref(), &self.status);
                     ui.add_space(12.0);
 
-                    let message_area_height = (ui.available_height() - 68.0).max(240.0);
-                    egui::Frame::none()
-                        .fill(egui::Color32::from_rgb(13, 18, 25))
-                        .rounding(egui::Rounding::same(12.0))
-                        .inner_margin(egui::Margin::symmetric(14.0, 14.0))
-                        .show(ui, |ui| {
-                            ui.set_min_height(message_area_height);
-                            egui::ScrollArea::vertical()
-                                .stick_to_bottom(true)
-                                .auto_shrink([false, false])
+                    let message_area_height = (ui.available_height() - 76.0).max(180.0);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), message_area_height),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            egui::Frame::none()
+                                .fill(egui::Color32::from_rgb(13, 18, 25))
+                                .rounding(egui::Rounding::same(12.0))
+                                .inner_margin(egui::Margin::symmetric(14.0, 14.0))
                                 .show(ui, |ui| {
-                                    if self.messages.is_empty() {
-                                        empty_chat(ui);
-                                    }
+                                    ui.set_min_size(ui.available_size());
+                                    egui::ScrollArea::vertical()
+                                        .stick_to_bottom(true)
+                                        .auto_shrink([false, false])
+                                        .max_height(ui.available_height())
+                                        .show(ui, |ui| {
+                                            if self.messages.is_empty() {
+                                                empty_chat(ui);
+                                            }
 
-                                    for message in &self.messages {
-                                        message_row(ui, message);
-                                        ui.add_space(8.0);
-                                    }
+                                            for message in &self.messages {
+                                                message_row(ui, message);
+                                                ui.add_space(8.0);
+                                            }
+                                        });
                                 });
-                        });
+                        },
+                    );
 
                     ui.add_space(12.0);
                     if composer(ui, &mut self.draft_message, self.connection.is_some()) {
