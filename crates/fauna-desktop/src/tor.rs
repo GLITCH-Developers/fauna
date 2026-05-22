@@ -154,15 +154,19 @@ pub fn connect_via_socks5_with_retry(
     host: &str,
     port: u16,
     timeout: Duration,
+    mut on_retry: impl FnMut(u32, &str),
 ) -> Result<TcpStream> {
     let started = Instant::now();
     let mut last_error = None;
+    let mut attempt = 1;
 
     while started.elapsed() < timeout {
         match connect_via_socks5(socks_addr, host, port) {
             Ok(stream) => return Ok(stream),
             Err(error) => {
+                on_retry(attempt, &error.to_string());
                 last_error = Some(error);
+                attempt += 1;
                 thread::sleep(Duration::from_secs(2));
             }
         }

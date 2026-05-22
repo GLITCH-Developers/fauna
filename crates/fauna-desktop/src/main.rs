@@ -70,6 +70,7 @@ enum MessageAuthor {
 
 enum NetworkEvent {
     InviteCreated(String),
+    Status(String),
     Connected(String),
     Incoming(String),
     Disconnected(String),
@@ -245,6 +246,9 @@ impl FaunaApp {
                             "Bu davet sadece ayni bilgisayarda test icindir. Baska bilgisayar icin Tor modunu ac.",
                         );
                     }
+                }
+                NetworkEvent::Status(status) => {
+                    self.status = status;
                 }
                 NetworkEvent::Connected(peer_name) => {
                     self.status = format!("{peer_name} ile sifreli oturum kuruldu");
@@ -720,7 +724,7 @@ fn host_network(
     let local_addr = listener.local_addr().context("local adres okunamadi")?;
     let advertised_addr = if let Some(config) = tor_config {
         events
-            .send(NetworkEvent::Connected(
+            .send(NetworkEvent::Status(
                 "Tor onion servisi hazirlaniyor".to_owned(),
             ))
             .ok();
@@ -729,6 +733,12 @@ fn host_network(
             config.service_port,
             &local_addr.to_string(),
         )?;
+        events
+            .send(NetworkEvent::Status(
+                "Onion servisi yayinlandi; Tor aginda duyurulmasi bekleniyor".to_owned(),
+            ))
+            .ok();
+        thread::sleep(Duration::from_secs(8));
         format!("onion://{}:{}", onion.service_id, config.service_port)
     } else {
         normalize_direct_public_addr(&public_addr, local_addr.to_string())
@@ -755,7 +765,7 @@ fn join_network(
         .addresses
         .first()
         .ok_or_else(|| anyhow!("davet linkinde adres yok"))?;
-    let stream = connect_to_invite_address(address, &tor_socks_addr)?;
+    let stream = connect_to_invite_address(address, &tor_socks_addr, Some(&events))?;
     let identity = DeviceIdentity::generate();
 
     run_session(
@@ -941,13 +951,34 @@ fn normalize_direct_public_addr(address: &str, local_addr: String) -> String {
     }
 }
 
-fn connect_to_invite_address(address: &str, tor_socks_addr: &str) -> Result<TcpStream> {
+fn connect_to_invite_address(
+    address: &str,
+    tor_socks_addr: &str,
+    events: Option<&Sender<NetworkEvent>>,
+) -> Result<TcpStream> {
     if let Some(onion_target) = parse_onion_address(address)? {
+        if let Some(events) = events {
+            events
+                .send(NetworkEvent::Status(
+                    "Tor uzerinden onion adresine baglaniyor".to_owned(),
+                ))
+                .ok();
+        }
+
         return tor::connect_via_socks5_with_retry(
             tor_socks_addr,
             &onion_target.host,
             onion_target.port,
-            Duration::from_secs(75),
+            Duration::from_secs(180),
+            |attempt, error| {
+                if let Some(events) = events {
+                    events
+                        .send(NetworkEvent::Status(format!(
+                            "Tor baglantisi deneniyor ({attempt}): {error}"
+                        )))
+                        .ok();
+                }
+            },
         );
     }
 
