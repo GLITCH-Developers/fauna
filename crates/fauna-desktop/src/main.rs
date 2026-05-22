@@ -147,6 +147,12 @@ impl FaunaApp {
             return;
         }
 
+        if invite_contains_onion_address(&invite) && !self.tor_enabled {
+            self.tor_enabled = true;
+            self.tor_auto_start = true;
+            self.push_system("Onion daveti algilandi; Tor modu otomatik acildi.");
+        }
+
         let tor_socks_addr = match self.prepare_tor_config() {
             Ok(Some(config)) => config.socks_addr,
             Ok(None) => self.tor_socks_addr.trim().to_owned(),
@@ -232,6 +238,13 @@ impl FaunaApp {
                 NetworkEvent::InviteCreated(invite) => {
                     self.current_invite = invite;
                     self.status = "Davet hazir, karsi tarafi bekliyor".to_owned();
+                    if self.current_invite.contains("127.0.0.1")
+                        || self.current_invite.contains("localhost")
+                    {
+                        self.push_system(
+                            "Bu davet sadece ayni bilgisayarda test icindir. Baska bilgisayar icin Tor modunu ac.",
+                        );
+                    }
                 }
                 NetworkEvent::Connected(peer_name) => {
                     self.status = format!("{peer_name} ile sifreli oturum kuruldu");
@@ -939,7 +952,24 @@ fn connect_to_invite_address(address: &str, tor_socks_addr: &str) -> Result<TcpS
     }
 
     let address = normalize_address(address)?;
+    if address.starts_with("127.") || address.starts_with("localhost:") {
+        bail!(
+            "{address} sadece bu bilgisayari gosterir. Baska bilgisayarda kullanmak icin host tarafinda Tor modunu acip yeni davet olustur."
+        );
+    }
+
     TcpStream::connect(&address).with_context(|| format!("{address} adresine baglanilamadi"))
+}
+
+fn invite_contains_onion_address(invite_text: &str) -> bool {
+    Invite::decode(invite_text)
+        .map(|invite| {
+            invite
+                .addresses
+                .iter()
+                .any(|address| address.contains(".onion"))
+        })
+        .unwrap_or(false)
 }
 
 struct OnionTarget {
